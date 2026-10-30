@@ -72,19 +72,37 @@ async function acceptAllQuests() {
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
+// Give up if Discord never sends a first heartbeat (game not detected, quest not enrolled, ...)
+const FIRST_HEARTBEAT_TIMEOUT = 90 * 1000;
+
+// Re-add the fake game if no heartbeat arrives for this long mid-quest
+const STALL_MS = 3 * 60 * 1000;
+
+let abort: (() => void) | undefined;
+
 // Waits for Discord's own heartbeat to report >= `target` seconds of progress
 function waitForProgress(taskName: string, quest: any, target: number, onProgress: (p: number) => void) {
-    return new Promise<void>(resolve => {
+    return new Promise<void>((resolve, reject) => {
+        let gotHeartbeat = false;
+        const done = (err?: Error) => {
+            clearTimeout(watchdog);
+            abort = undefined;
+            FluxDispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", handler);
+            err ? reject(err) : resolve();
+        };
+        const watchdog = setTimeout(() => {
+            if (!gotHeartbeat) done(new Error("No heartbeat from Discord within 90s"));
+        }, FIRST_HEARTBEAT_TIMEOUT);
         const handler = (data: any) => {
+            if (data.questId !== quest.id) return;
+            gotHeartbeat = true;
             const progress = quest.config.configVersion === 1
                 ? data.userStatus.streamProgressSeconds
                 : Math.floor(data.userStatus.progress[taskName].value);
             onProgress(progress);
-            if (progress >= target) {
-                FluxDispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", handler);
-                resolve();
-            }
+            if (progress >= target) done();
         };
+        abort = () => done(new Error("Plugin stopped"));
         FluxDispatcher.subscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", handler);
     });
 }
@@ -119,7 +137,11 @@ async function completeQuest(quest: any) {
             pid,
             pidPath: [pid],
             processName: appData.name,
-            start: Date.now()
+            start: Date.now(),
+            distributor: "discord",
+            lastFocused: Date.now(),
+            lastLaunched: Date.now(),
+            nativeProcessObserverId: 0
         };
         const store: any = RunningGameStore;
         const realGames = store.getRunningGames();
@@ -129,17 +151,41 @@ async function completeQuest(quest: any) {
         store.getGameForPID = (p: number) => p === pid ? fakeGame : undefined;
         FluxDispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: realGames, added: [fakeGame], games: [fakeGame] } as any);
 
+        // Discord's native game detection keeps dispatching its own RUNNING_GAMES_CHANGE, which drops the
+        // fake game and stops the quest heartbeats. Put it back whenever that happens or progress stalls.
+        const reinject = () => {
+            logger.info(`${questName}: re-adding spoofed game`);
+            FluxDispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [], added: [fakeGame], games: [fakeGame] } as any);
+        };
+        const onGamesChange = (e: any) => {
+            if (!e.games?.some((g: any) => g.pid === pid)) setTimeout(reinject, 0);
+        };
+        FluxDispatcher.subscribe("RUNNING_GAMES_CHANGE", onGamesChange);
+        let lastBeat = Date.now();
+        const stallCheck = setInterval(() => {
+            if (Date.now() - lastBeat > STALL_MS) {
+                lastBeat = Date.now();
+                logger.warn(`${questName}: no heartbeat for ${STALL_MS / 60000} min`);
+                reinject();
+            }
+        }, 30 * 1000);
+
         logger.info(`Spoofed game ${appData.name}; ~${Math.ceil((secondsNeeded - secondsDone) / 60)} min left`);
         try {
-            await waitForProgress("PLAY_ON_DESKTOP", quest, secondsNeeded, p => logger.info(`${questName}: ${p}/${secondsNeeded}`));
+            await waitForProgress("PLAY_ON_DESKTOP", quest, secondsNeeded, p => {
+                lastBeat = Date.now();
+                logger.info(`${questName}: ${p}/${secondsNeeded}`);
+            });
         } finally {
+            clearInterval(stallCheck);
+            FluxDispatcher.unsubscribe("RUNNING_GAMES_CHANGE", onGamesChange);
             store.getRunningGames = realGetRunningGames;
             store.getGameForPID = realGetGameForPID;
-            FluxDispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [fakeGame], added: [], games: [] } as any);
+            FluxDispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [fakeGame], added: [], games: realGames } as any);
         }
     }
 
-    logger.info(`Quest completed: ${questName}`);
+    logger.info(`Quest finished: ${questName}`);
 }
 
 async function completeQuests() {
@@ -182,6 +228,7 @@ export default definePlugin({
     },
 
     stop() {
+        abort?.();
         clearTimeout(startTimeout);
         clearInterval(interval);
     }
