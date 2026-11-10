@@ -15,12 +15,53 @@ Progress is logged to the console (`Ctrl+Shift+I` → Console → filter for `Au
 
 ## Easiest install (no building)
 
-1. Click the green **Code** button, then **Download ZIP**, and unzip it somewhere permanent (for example `C:\Vencord-Quests`).
-2. Open the `prebuilt` folder and double-click **INSTALL.bat**.
-3. Open Discord, go to **Settings > Vencord > Plugins**, switch on **AutoAcceptQuests**.
+For people who just want it to work. Windows only. You do not need Git, Node or pnpm.
 
-Do not move or delete the folder afterwards. To remove it, double-click **UNINSTALL.bat**.
-The `prebuilt` folder is Vencord with this plugin already built in, so you do not need Git, Node or pnpm.
+**Before you start:** have the normal Discord desktop app installed and logged in (not the browser version).
+
+**1. Download**
+
+1. On this page click the green **Code** button, then **Download ZIP**.
+2. Find the downloaded `vencord-auto-accept-quests-main.zip` (usually in Downloads).
+
+**2. Unzip it somewhere permanent**
+
+1. Right-click the ZIP and choose **Extract All...**
+2. Pick a place that will not change, for example `C:\Vencord-Quests`. Do not use Downloads or the Desktop, because the folder has to stay there for good. Moving or deleting it later breaks Vencord in Discord.
+3. Open the extracted folder, then open the folder called `prebuilt`.
+
+**3. Install**
+
+1. Double-click **INSTALL.bat**.
+2. If Windows shows "Windows protected your PC", click **More info**, then **Run anyway**. This happens because the file is not signed, and it is normal.
+3. A black window opens, closes Discord and installs. Wait until it says **Done**, then press any key.
+
+**4. Turn the plugin on**
+
+1. Open Discord. It should show a **Vencord** entry in the settings list.
+2. Go to **Settings > Vencord > Plugins**.
+3. Type `AutoAcceptQuests` in the search box and switch it on.
+4. Restart Discord if it asks.
+
+**5. Check that it works**
+
+1. Press `Ctrl+Shift+I` in Discord and open the **Console** tab.
+2. In the filter box type `AutoAcceptQuests`.
+3. About 10 seconds after Discord starts you should see lines like `Accepted quest: ...` and then progress such as `0:07 / 0:30`.
+4. Keep Discord open until the quests finish. Game quests take as long as the quest says.
+
+**If something goes wrong**
+
+| Problem | What to do |
+|---|---|
+| No Vencord entry in Discord settings | Run **INSTALL.bat** again. Discord updates can remove Vencord, so repeat this after an update |
+| Plugin not in the list | Make sure you ran INSTALL.bat from the unzipped `prebuilt` folder, not from inside the ZIP |
+| Console shows a red error | Copy the line starting with `Could not finish` and send it to whoever gave you this |
+| Nothing at all in the console | The plugin is off. Switch it on in Settings > Vencord > Plugins |
+
+**Remove it:** double-click **UNINSTALL.bat** in the same `prebuilt` folder.
+
+**Updating:** download the new ZIP, unzip it over the old folder, and run **INSTALL.bat** again.
 
 ## What it does
 
